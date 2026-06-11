@@ -231,6 +231,16 @@
       font-size: 0.8125rem;
     }
 
+    .batch-card-item {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.75rem;
+      margin-bottom: 0.5rem;
+      background: var(--card);
+    }
+    .batch-card-word { font-weight: 700; font-size: 1rem; }
+    .batch-card-meaning { color: var(--muted); font-size: 0.875rem; margin: 0.2rem 0 0.5rem; }
+
     .btn-speak {
       background: none;
       border: 1px solid var(--border);
@@ -289,7 +299,7 @@
 
     <div style="margin-top:1rem;color:#92400E;font-size:0.85rem;font-weight:700">【第二階段】日常手機使用流程</div>
     <ol>
-      <li>用 <b>Safari</b> 開啟 <code>https://anki-vocab-adder.netlify.app</code>（Chrome 或 Telegram 內建瀏覽器無法跳轉 AnkiMobile，<b>只能用 Safari</b>）</li>
+      <li>用 <b>Safari</b> 開啟 <code>https://drpan2.github.io/anki-vocab-adder/</code>（Chrome 或 Telegram 內建瀏覽器無法跳轉 AnkiMobile，<b>只能用 Safari</b>）</li>
       <li>點「⚙ 設定」→ 填入 Groq API Key、設定牌組名稱（必須和 Anki 裡已有的牌組名稱一致）</li>
       <li>輸入單字 → 生成卡片 → 點「📱 加入 AnkiMobile（手機）」</li>
       <li>自動跳轉 AnkiMobile → 確認儲存</li>
@@ -335,11 +345,6 @@
         </div>
       </div>
 
-      <div class="status-row">
-        <span class="dot" id="statusDot"></span>
-        <span id="statusText">ANKI 未連線</span>
-        <button class="btn-test" onclick="checkAnki()">測試連線</button>
-      </div>
     </div>
   </div>
 
@@ -368,6 +373,7 @@
         </div>
       </div>
       <div id="batchResult" class="alert hidden" style="margin-top:0.5rem"></div>
+      <div id="batchCards" class="hidden" style="margin-top:0.75rem"></div>
     </div>
   </div>
 
@@ -404,7 +410,6 @@
     </div>
 
     <div style="margin-top:1rem">
-      <button class="btn-success" id="addBtn" onclick="addToAnki()">✚ 加入 ANKI（桌機）</button>
       <button class="btn-mobile" onclick="addToAnkiMobile()">📱 加入 AnkiMobile（手機）</button>
       <div style="font-size:0.7rem;color:var(--muted);margin-bottom:0.5rem">使用「ANKI單字卡」樣板（翻牌自動唸例句）</div>
       <button class="btn-outline" onclick="copyTsv()">複製為文字（備用匯入）</button>
@@ -773,66 +778,81 @@ hr{border:none;border-top:1px solid #E5E7EB;margin:.75rem 0}`;
     const stat = document.getElementById('batchStatus');
     prog.classList.remove('hidden');
     document.getElementById('batchResult').classList.add('hidden');
+    document.getElementById('batchCards').classList.add('hidden');
+    document.getElementById('batchCards').innerHTML = '';
 
-    const deck = document.getElementById('deckName').value.trim() || 'English Vocabulary';
-    let ok = 0, fail = 0, skip = 0;
+    const generatedCards = [];
+    let fail = 0;
     const failWords = [];
 
     for (let i = 0; i < words.length; i++) {
       const word = words[i];
-      stat.textContent = `處理中 ${i + 1} / ${words.length}：${word}`;
+      stat.textContent = `生成中 ${i + 1} / ${words.length}：${word}`;
       bar.style.width = `${Math.round((i / words.length) * 100)}%`;
 
       try {
         const card = await callGemini(word);
-        const ipa         = card.ipa || '';
-        const meaning     = card.chinese_meaning || '';
-        const example     = card.example_sentence || '';
-        const translation = card.example_translation || '';
-        const mnemonic    = card.mnemonic || '';
-
-        // 手機：anki:// 無法批次用，改走 AnkiConnect（桌機）或累積後通知
-        // 這裡用 AnkiConnect 批次推（桌機）；手機可用「複製清單」後匯入
-        try {
-          const model = await ensureModel();
-          await anki('createDeck', { deck });
-          await anki('addNote', {
-            note: {
-              deckName: deck,
-              modelName: model,
-              fields: { '單字': card.word || word, '音標': ipa, '中文意思': meaning, '例句': example, '例句翻譯': translation, '助記': mnemonic },
-              options: { allowDuplicate: false }
-            }
-          });
-          saveHistory({ word: card.word || word, meaning });
-          ok++;
-        } catch (ankiErr) {
-          if (ankiErr.message && ankiErr.message.includes('duplicate')) { skip++; }
-          else { fail++; failWords.push(word); }
-        }
-
+        generatedCards.push({
+          word: card.word || word,
+          ipa: card.ipa || '',
+          meaning: card.chinese_meaning || '',
+          example: card.example_sentence || '',
+          translation: card.example_translation || '',
+          mnemonic: card.mnemonic || ''
+        });
       } catch (e) {
         fail++;
         failWords.push(word);
       }
 
-      // 短暫延遲避免 API rate limit
       if (i < words.length - 1) await new Promise(r => setTimeout(r, 400));
     }
 
     bar.style.width = '100%';
-    stat.textContent = '完成！';
-    let msg = `✓ 成功 ${ok} 張`;
-    if (skip) msg += `，跳過重複 ${skip} 張`;
-    if (fail) msg += `，失敗 ${fail} 張（${failWords.join(', ')}）`;
+    stat.textContent = '生成完成！';
 
-    if (fail && ok === 0) {
-      showBatchResult('warn', 'ANKI 未連線，卡片已生成但未推送。請確認 Anki 桌機有開且 AnkiConnect 正常，再重試。');
-    } else {
+    if (generatedCards.length) {
+      window._batchCards = generatedCards;
+      renderBatchCards(generatedCards);
+      let msg = `✓ 生成 ${generatedCards.length} 張，請逐張點「加入 AnkiMobile」`;
+      if (fail) msg += `，失敗 ${fail} 張（${failWords.join(', ')}）`;
       showBatchResult('ok', msg);
+    } else {
+      showBatchResult('err', `全部失敗（${failWords.join(', ')}），請確認 API Key 正確`);
     }
     btn.disabled = false;
-    renderHistory();
+  }
+
+  function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function renderBatchCards(cards) {
+    const el = document.getElementById('batchCards');
+    el.innerHTML = cards.map((c, i) => `
+      <div class="batch-card-item">
+        <div class="batch-card-word">${escHtml(c.word)}</div>
+        <div class="batch-card-meaning">${escHtml(c.meaning)}</div>
+        <button class="btn-mobile" style="width:auto;padding:0.4rem 0.9rem;font-size:0.875rem;margin-bottom:0" onclick="addBatchCard(${i})">📱 加入 AnkiMobile</button>
+      </div>
+    `).join('');
+    el.classList.remove('hidden');
+  }
+
+  function addBatchCard(index) {
+    const c = window._batchCards[index];
+    const deck = document.getElementById('deckName').value.trim() || 'English Vocabulary';
+    const qs = [
+      `type=${encodeURIComponent('ANKI單字卡')}`,
+      `deck=${encodeURIComponent(deck)}`,
+      `fld單字=${encodeURIComponent(c.word)}`,
+      `fld音標=${encodeURIComponent(c.ipa)}`,
+      `fld中文意思=${encodeURIComponent(c.meaning)}`,
+      `fld例句=${encodeURIComponent(c.example)}`,
+      `fld例句翻譯=${encodeURIComponent(c.translation)}`,
+      `fld助記=${encodeURIComponent(c.mnemonic)}`
+    ].join('&');
+    window.location.href = `anki://x-callback-url/addnote?${qs}`;
   }
 
   function showBatchResult(type, msg) {
@@ -844,7 +864,6 @@ hr{border:none;border-top:1px solid #E5E7EB;margin:.75rem 0}`;
   // ─── Init ───
   loadSettings();
   renderHistory();
-  checkAnki();
 </script>
 </body>
 </html>
