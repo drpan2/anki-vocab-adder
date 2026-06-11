@@ -351,6 +351,24 @@
              onkeydown="if(event.key==='Enter') generate()">
       <button class="btn-primary" id="genBtn" onclick="generate()">生成卡片</button>
     </div>
+    <div style="margin-top:0.75rem;border-top:1px solid var(--border);padding-top:0.75rem">
+      <div class="panel-title" style="margin-bottom:0.5rem">批次新增</div>
+      <textarea id="batchInput" rows="4" placeholder="每行一個單字，或用逗號分隔&#10;例：apple, banana, cherry&#10;&#10;也可上傳 .txt 或 .xlsx 檔案"></textarea>
+      <div style="display:flex;gap:0.5rem;margin-top:0.5rem;flex-wrap:wrap">
+        <button class="btn-primary" id="batchBtn" onclick="startBatch()" style="flex:1">批次生成並加入</button>
+        <label style="flex:none;cursor:pointer">
+          <span style="display:inline-block;padding:0.6rem 1rem;border-radius:8px;font-size:0.9375rem;font-weight:500;background:transparent;border:1px solid var(--border);color:var(--text)">📂 上傳檔案</span>
+          <input type="file" id="fileInput" accept=".txt,.xlsx,.xls,.csv" style="display:none" onchange="handleFileUpload(event)">
+        </label>
+      </div>
+      <div id="batchProgress" class="hidden" style="margin-top:0.75rem">
+        <div style="font-size:0.8125rem;color:var(--muted);margin-bottom:0.3rem" id="batchStatus">處理中…</div>
+        <div style="background:var(--border);border-radius:4px;height:6px">
+          <div id="batchBar" style="background:var(--primary);height:6px;border-radius:4px;width:0%;transition:width 0.3s"></div>
+        </div>
+      </div>
+      <div id="batchResult" class="alert hidden" style="margin-top:0.5rem"></div>
+    </div>
   </div>
 
   <!-- 預覽 / 編輯 -->
@@ -701,6 +719,126 @@ hr{border:none;border-top:1px solid #E5E7EB;margin:.75rem 0}`;
       btn.textContent = '已複製 ✓';
       setTimeout(() => btn.textContent = '複製', 1800);
     });
+  }
+
+  // ─── 批次新增 ───
+  async function startBatch() {
+    const raw = document.getElementById('batchInput').value.trim();
+    if (!raw) return;
+    const words = raw.split(/[\n,，]+/).map(w => w.trim().toLowerCase()).filter(Boolean);
+    if (!words.length) return;
+    await runBatch(words);
+  }
+
+  async function handleFileUpload(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const ext = file.name.split('.').pop().toLowerCase();
+    let words = [];
+
+    if (ext === 'txt' || ext === 'csv') {
+      const text = await file.text();
+      words = text.split(/[\n,，\r]+/).map(w => w.trim().toLowerCase()).filter(Boolean);
+    } else if (ext === 'xlsx' || ext === 'xls') {
+      // Load SheetJS from CDN
+      if (!window.XLSX) {
+        await new Promise((res, rej) => {
+          const s = document.createElement('script');
+          s.src = 'https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js';
+          s.onload = res; s.onerror = rej;
+          document.head.appendChild(s);
+        });
+      }
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf);
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, { header: 1 });
+      words = rows.flatMap(r => r).map(v => String(v).trim().toLowerCase()).filter(v => v && v !== 'undefined');
+    } else {
+      showBatchResult('err', '不支援此檔案格式，請用 .txt / .xlsx / .csv');
+      return;
+    }
+
+    if (!words.length) { showBatchResult('err', '讀不到單字，請確認檔案格式'); return; }
+    document.getElementById('batchInput').value = words.join('\n');
+    await runBatch(words);
+    e.target.value = '';
+  }
+
+  async function runBatch(words) {
+    const btn = document.getElementById('batchBtn');
+    btn.disabled = true;
+    const prog = document.getElementById('batchProgress');
+    const bar  = document.getElementById('batchBar');
+    const stat = document.getElementById('batchStatus');
+    prog.classList.remove('hidden');
+    document.getElementById('batchResult').classList.add('hidden');
+
+    const deck = document.getElementById('deckName').value.trim() || 'English Vocabulary';
+    let ok = 0, fail = 0, skip = 0;
+    const failWords = [];
+
+    for (let i = 0; i < words.length; i++) {
+      const word = words[i];
+      stat.textContent = `處理中 ${i + 1} / ${words.length}：${word}`;
+      bar.style.width = `${Math.round((i / words.length) * 100)}%`;
+
+      try {
+        const card = await callGemini(word);
+        const ipa         = card.ipa || '';
+        const meaning     = card.chinese_meaning || '';
+        const example     = card.example_sentence || '';
+        const translation = card.example_translation || '';
+        const mnemonic    = card.mnemonic || '';
+
+        // 手機：anki:// 無法批次用，改走 AnkiConnect（桌機）或累積後通知
+        // 這裡用 AnkiConnect 批次推（桌機）；手機可用「複製清單」後匯入
+        try {
+          const model = await ensureModel();
+          await anki('createDeck', { deck });
+          await anki('addNote', {
+            note: {
+              deckName: deck,
+              modelName: model,
+              fields: { '單字': card.word || word, '音標': ipa, '中文意思': meaning, '例句': example, '例句翻譯': translation, '助記': mnemonic },
+              options: { allowDuplicate: false }
+            }
+          });
+          saveHistory({ word: card.word || word, meaning });
+          ok++;
+        } catch (ankiErr) {
+          if (ankiErr.message && ankiErr.message.includes('duplicate')) { skip++; }
+          else { fail++; failWords.push(word); }
+        }
+
+      } catch (e) {
+        fail++;
+        failWords.push(word);
+      }
+
+      // 短暫延遲避免 API rate limit
+      if (i < words.length - 1) await new Promise(r => setTimeout(r, 400));
+    }
+
+    bar.style.width = '100%';
+    stat.textContent = '完成！';
+    let msg = `✓ 成功 ${ok} 張`;
+    if (skip) msg += `，跳過重複 ${skip} 張`;
+    if (fail) msg += `，失敗 ${fail} 張（${failWords.join(', ')}）`;
+
+    if (fail && ok === 0) {
+      showBatchResult('warn', 'ANKI 未連線，卡片已生成但未推送。請確認 Anki 桌機有開且 AnkiConnect 正常，再重試。');
+    } else {
+      showBatchResult('ok', msg);
+    }
+    btn.disabled = false;
+    renderHistory();
+  }
+
+  function showBatchResult(type, msg) {
+    const el = document.getElementById('batchResult');
+    el.className = `alert ${type} show`;
+    el.textContent = msg;
   }
 
   // ─── Init ───
