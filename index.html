@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ANKI 單字卡生成器</title>
+  <style>
+    :root {
+      --primary: #4F46E5;
+      --primary-hover: #4338CA;
+      --success: #10B981;
+      --error: #EF4444;
+      --bg: #F9FAFB;
+      --card: #FFFFFF;
+      --border: #E5E7EB;
+      --text: #111827;
+      --muted: #6B7280;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      padding: 2rem 1rem;
+    }
+
+    .container { width: 100%; max-width: 580px; }
+
+    h1 { font-size: 1.5rem; font-weight: 700; margin-bottom: 0.2rem; }
+    .subtitle { color: var(--muted); font-size: 0.875rem; margin-bottom: 1.5rem; }
+
+    .panel {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.25rem;
+      margin-bottom: 1rem;
+    }
+
+    .panel-title {
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      margin-bottom: 0.875rem;
+    }
+
+    label {
+      display: block;
+      font-size: 0.8125rem;
+      font-weight: 500;
+      margin-bottom: 0.3rem;
+    }
+
+    input[type="text"],
+    input[type="password"],
+    select,
+    textarea {
+      width: 100%;
+      padding: 0.6rem 0.75rem;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 0.9375rem;
+      font-family: inherit;
+      background: var(--card);
+      color: var(--text);
+      outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
+      resize: none;
+    }
+
+    input:focus, select:focus, textarea:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(79,70,229,0.1);
+    }
+
+    .field-group { margin-bottom: 0.75rem; }
+    .field-group:last-child { margin-bottom: 0; }
+
+    .row { display: flex; gap: 0.5rem; align-items: flex-start; }
+    .row input { flex: 1; }
+
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+
+    button {
+      padding: 0.6rem 1.25rem;
+      border-radius: 8px;
+      font-size: 0.9375rem;
+      font-weight: 500;
+      cursor: pointer;
+      border: none;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-primary:hover:not(:disabled) { background: var(--primary-hover); }
+    .btn-primary:disabled { opacity: 0.55; cursor: not-allowed; }
+
+    .btn-success { background: var(--success); color: #fff; width: 100%; margin-bottom: 0.5rem; }
+    .btn-success:hover:not(:disabled) { background: #059669; }
+    .btn-success:disabled { opacity: 0.55; cursor: not-allowed; }
+
+    .btn-mobile { background: #0D9488; color: #fff; width: 100%; margin-bottom: 0.5rem; }
+    .btn-mobile:hover:not(:disabled) { background: #0F766E; }
+    .btn-mobile:disabled { opacity: 0.55; cursor: not-allowed; }
+
+    .btn-outline {
+      background: transparent;
+      color: var(--text);
+      border: 1px solid var(--border);
+      width: 100%;
+    }
+    .btn-outline:hover { background: var(--bg); }
+
+    .btn-link {
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-size: 0.8125rem;
+      cursor: pointer;
+      text-decoration: underline;
+      padding: 0;
+    }
+    .btn-link:hover { color: var(--text); }
+
+    .settings-wrap { margin-bottom: 1rem; }
+
+    .hidden { display: none !important; }
+
+    .status-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-top: 0.875rem;
+      font-size: 0.8125rem;
+      color: var(--muted);
+    }
+
+    .dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: #D1D5DB;
+      flex-shrink: 0;
+    }
+    .dot.on { background: var(--success); }
+
+    .btn-test {
+      padding: 0.2rem 0.625rem;
+      font-size: 0.75rem;
+      border-radius: 6px;
+      background: transparent;
+      border: 1px solid var(--border);
+      cursor: pointer;
+    }
+    .btn-test:hover { background: var(--bg); }
+
+    .alert {
+      padding: 0.75rem;
+      border-radius: 8px;
+      font-size: 0.875rem;
+      margin-top: 0.75rem;
+      display: none;
+    }
+    .alert.show { display: block; }
+    .alert.ok   { background: #D1FAE5; color: #065F46; border: 1px solid #A7F3D0; }
+    .alert.err  { background: #FEE2E2; color: #991B1B; border: 1px solid #FECACA; }
+    .alert.warn { background: #FEF9C3; color: #854D0E; border: 1px solid #FDE047; }
+
+    .spinner {
+      display: inline-block;
+      width: 14px; height: 14px;
+      border: 2px solid rgba(255,255,255,0.35);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      margin-right: 0.4rem;
+      vertical-align: middle;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .preview-label {
+      font-size: 0.7rem;
+      color: var(--muted);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 0.3rem;
+    }
+
+    .history-item {
+      display: flex;
+      justify-content: space-between;
+      padding: 0.5rem 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.875rem;
+    }
+    .history-item:last-child { border-bottom: none; }
+    .hi-word { font-weight: 600; }
+    .hi-meaning { color: var(--muted); }
+
+    .setup-box {
+      background: #FFF7ED;
+      border: 1px solid #FED7AA;
+      border-radius: 10px;
+      padding: 1rem;
+      margin-bottom: 1rem;
+      font-size: 0.8125rem;
+      line-height: 1.6;
+    }
+    .setup-box summary {
+      font-weight: 600;
+      cursor: pointer;
+      color: #92400E;
+      list-style: none;
+    }
+    .setup-box summary::before { content: "📋 "; }
+    .setup-box ol { margin: 0.5rem 0 0 1rem; color: #78350F; }
+    .setup-box li { margin-bottom: 0.25rem; }
+    .setup-box code {
+      background: #FEF3C7;
+      padding: 0.1rem 0.3rem;
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 0.8125rem;
+    }
+
+    .btn-speak {
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.15rem 0.5rem;
+      cursor: pointer;
+      font-size: 0.875rem;
+      line-height: 1.4;
+      color: var(--muted);
+      transition: all 0.15s;
+    }
+    .btn-speak:hover { background: var(--bg); color: var(--primary); border-color: var(--primary); }
+    .btn-speak.playing { color: var(--primary); border-color: var(--primary); }
+
+    .field-label-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.3rem;
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+  <h1>ANKI 單字卡生成器</h1>
+  <p class="subtitle">輸入單字 → AI 生成內容 → 直接推進 ANKI</p>
+
+  <!-- 安裝與使用說明 -->
+  <details class="setup-box" id="setupBox">
+    <summary>首次使用？點這裡看完整設定步驟</summary>
+
+    <div style="margin-top:0.75rem;color:#92400E;font-size:0.85rem;font-weight:700">【第一階段】桌機一次性設定（建立樣板）</div>
+    <ol>
+      <li>桌機安裝 AnkiConnect：開啟 ANKI → 「工具」→「附加元件」→「取得附加元件」→ 輸入 <code>2055492159</code> → 確定 → 重新啟動 ANKI</li>
+      <li>在 ANKI「工具」→「附加元件」→ 選 AnkiConnect → 「設定」，貼上下方設定，按確定後重啟 ANKI</li>
+      <li>桌面雙擊 <code>anki單字卡.html</code> 用 Chrome 開啟（<b>必須從本機檔案開，不能用 Netlify 網址</b>）</li>
+      <li>填入 Groq API Key → 輸入任一單字 → 生成卡片 → 點「✚ 加入 ANKI（桌機）」</li>
+      <li>Anki 桌機同步 → 手機 AnkiMobile「同步集合」</li>
+    </ol>
+
+    <div style="margin-top:0.75rem; color:#92400E; font-size:0.8rem; font-weight:600; margin-bottom:0.25rem">AnkiConnect 設定（全選複製貼上）：</div>
+    <div style="position:relative">
+      <pre id="ankiConfigPre" style="background:#FEF3C7;border:1px solid #FDE68A;border-radius:6px;padding:0.6rem 0.75rem;font-size:0.75rem;font-family:monospace;color:#78350F;margin:0;overflow-x:auto;white-space:pre">{
+    "apiKey": null,
+    "apiLogPath": null,
+    "ignoreOriginList": [],
+    "webBindAddress": "127.0.0.1",
+    "webBindPort": 8765,
+    "webCorsOriginList": [
+        "http://localhost",
+        "null"
+    ]
+}</pre>
+      <button onclick="copyAnkiConfig()" id="copyConfigBtn" style="position:absolute;top:0.4rem;right:0.4rem;padding:0.2rem 0.6rem;font-size:0.7rem;border-radius:4px;background:#92400E;color:#fff;border:none;cursor:pointer">複製</button>
+    </div>
+
+    <div style="margin-top:1rem;color:#92400E;font-size:0.85rem;font-weight:700">【第二階段】日常手機使用流程</div>
+    <ol>
+      <li>用 <b>Safari</b> 開啟 <code>https://anki-vocab-adder.netlify.app</code>（Chrome 或 Telegram 內建瀏覽器無法跳轉 AnkiMobile，<b>只能用 Safari</b>）</li>
+      <li>點「⚙ 設定」→ 填入 Groq API Key、設定牌組名稱（必須和 Anki 裡已有的牌組名稱一致）</li>
+      <li>輸入單字 → 生成卡片 → 點「📱 加入 AnkiMobile（手機）」</li>
+      <li>自動跳轉 AnkiMobile → 確認儲存</li>
+    </ol>
+    <div style="margin-top:0.5rem;font-size:0.75rem;color:#78350F">建議：Safari 開啟後點「分享」→「加入主畫面」，下次像 App 一樣直接點開</div>
+
+    <div style="margin-top:1rem;color:#92400E;font-size:0.85rem;font-weight:700">【選配】改善 TTS 聲音品質</div>
+    <ol>
+      <li>iPhone 設定 → 輔助使用 → 語音內容 → 聲音 → English</li>
+      <li>選「Samantha」或「Ava」→ 點右邊下載 → 選「Enhanced（高品質）」</li>
+      <li>下載完成後 AnkiMobile 複習時聲音更清晰</li>
+    </ol>
+  </details>
+
+  <!-- 設定 -->
+  <div class="settings-wrap">
+    <button class="btn-link" onclick="toggleSettings()">⚙ 設定（API Key、牌組名稱）</button>
+    <div class="panel hidden" id="settingsPanel">
+      <div class="panel-title">設定</div>
+
+      <div class="field-group">
+        <label for="geminiKey">Groq API Key（免費）</label>
+        <input type="password" id="geminiKey" placeholder="gsk_..." oninput="saveSettings()">
+        <div style="font-size:0.75rem; color:var(--muted); margin-top:0.25rem">
+          免費取得：到 <a href="https://console.groq.com/keys" target="_blank" rel="noopener" style="color:var(--primary)">Groq Console ↗</a> 建立 API Key
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="field-group" style="margin-bottom:0">
+          <label for="deckName">ANKI 牌組名稱</label>
+          <input type="text" id="deckName" placeholder="English Vocabulary" oninput="saveSettings()">
+        </div>
+        <div class="field-group" style="margin-bottom:0">
+          <label for="targetLang">單字語言</label>
+          <select id="targetLang" onchange="saveSettings()">
+            <option value="英文">英文</option>
+            <option value="日文">日文</option>
+            <option value="西班牙文">西班牙文</option>
+            <option value="韓文">韓文</option>
+            <option value="法文">法文</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="status-row">
+        <span class="dot" id="statusDot"></span>
+        <span id="statusText">ANKI 未連線</span>
+        <button class="btn-test" onclick="checkAnki()">測試連線</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 輸入區 -->
+  <div class="panel">
+    <div class="panel-title">輸入單字</div>
+    <div class="row">
+      <input type="text" id="wordInput" placeholder="輸入單字，例如：ephemeral"
+             onkeydown="if(event.key==='Enter') generate()">
+      <button class="btn-primary" id="genBtn" onclick="generate()">生成卡片</button>
+    </div>
+  </div>
+
+  <!-- 預覽 / 編輯 -->
+  <div class="panel hidden" id="previewPanel">
+    <div class="panel-title">卡片預覽（可直接編輯）</div>
+
+    <div class="field-group">
+      <div class="field-label-row">
+        <div class="preview-label" style="margin-bottom:0">單字</div>
+        <button class="btn-speak" id="speakBtn" onclick="previewPronunciation()" title="預覽發音">🔊 發音</button>
+      </div>
+      <textarea id="fWord" rows="1"></textarea>
+    </div>
+    <div class="field-group">
+      <div class="preview-label">音標（IPA）</div>
+      <textarea id="fIpa" rows="1" placeholder="/əˈkaʊnt/"></textarea>
+    </div>
+    <div class="field-group">
+      <div class="preview-label">中文意思</div>
+      <textarea id="fMeaning" rows="2"></textarea>
+    </div>
+    <div class="field-group">
+      <div class="preview-label">例句</div>
+      <textarea id="fExample" rows="2"></textarea>
+    </div>
+    <div class="field-group">
+      <div class="preview-label">例句翻譯</div>
+      <textarea id="fTranslation" rows="2"></textarea>
+    </div>
+    <div class="field-group" id="mnemonicGroup" style="display:none">
+      <div class="preview-label">助記（字根／字首／字尾）</div>
+      <textarea id="fMnemonic" rows="2" placeholder="例：re-（再次）+ build（建造）= 重建"></textarea>
+    </div>
+
+    <div style="margin-top:1rem">
+      <button class="btn-success" id="addBtn" onclick="addToAnki()">✚ 加入 ANKI（桌機）</button>
+      <button class="btn-mobile" onclick="addToAnkiMobile()">📱 加入 AnkiMobile（手機）</button>
+      <div style="font-size:0.7rem;color:var(--muted);margin-bottom:0.5rem">使用「ANKI單字卡」樣板（翻牌自動唸例句）</div>
+      <button class="btn-outline" onclick="copyTsv()">複製為文字（備用匯入）</button>
+    </div>
+
+    <div class="alert" id="alert"></div>
+  </div>
+
+  <!-- 歷史紀錄 -->
+  <div class="panel hidden" id="historyPanel">
+    <div class="panel-title">最近新增</div>
+    <div id="historyList"></div>
+  </div>
+</div>
+
+<script>
+  // ─── 設定 ───
+  function saveSettings() {
+    localStorage.setItem('gKey',  document.getElementById('geminiKey').value);
+    localStorage.setItem('deck',  document.getElementById('deckName').value);
+    localStorage.setItem('lang',  document.getElementById('targetLang').value);
+  }
+
+  function loadSettings() {
+    document.getElementById('geminiKey').value  = localStorage.getItem('gKey') || '';
+    document.getElementById('deckName').value   = localStorage.getItem('deck') || 'English Vocabulary';
+    document.getElementById('targetLang').value = localStorage.getItem('lang') || '英文';
+  }
+
+  function toggleSettings() {
+    document.getElementById('settingsPanel').classList.toggle('hidden');
+  }
+
+  // ─── AnkiConnect ───
+  async function anki(action, params = {}) {
+    const r = await fetch('http://localhost:8765', {
+      method: 'POST',
+      body: JSON.stringify({ action, version: 6, params })
+    });
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    return d.result;
+  }
+
+  async function checkAnki() {
+    try {
+      await anki('version');
+      document.getElementById('statusDot').classList.add('on');
+      document.getElementById('statusText').textContent = 'ANKI 已連線 ✓';
+    } catch {
+      document.getElementById('statusDot').classList.remove('on');
+      document.getElementById('statusText').textContent = 'ANKI 未連線';
+    }
+  }
+
+  async function ensureModel() {
+    const name = 'ANKI單字卡';
+    const list = await anki('modelNames');
+
+    const css = `.card{font-family:-apple-system,'Noto Sans TC',sans-serif;font-size:25px;text-align:left;padding:1.2rem 1.5rem;background:#fff;color:#111;line-height:1.5}
+.word{font-size:2em;font-weight:700;text-align:center;margin-bottom:0.15rem}
+.ipa{font-size:.85em;color:#9CA3AF;text-align:center;margin-bottom:.5rem}
+.sec{font-size:.8em;color:#6B7280;font-weight:500;margin:.75rem 0 .15rem}
+.meaning{font-size:1.5em;color:#4F46E5;font-weight:500;line-height:1.4}
+.example{font-size:1em;color:#374151;font-style:normal;margin-top:0}
+.translation{color:#2563EB;font-size:1em;margin-top:.15rem}
+.mnemonic{font-size:.9em;color:#374151;margin-top:1.25rem;padding-top:.75rem;border-top:1px solid #E5E7EB}
+hr{border:none;border-top:1px solid #E5E7EB;margin:.75rem 0}`;
+
+    // 使用 Anki 內建 TTS：正面播單字，背面播例句（FrontSide 的音不會重播）
+    const frontTemplate = '<div class="word">{{單字}}</div>{{#音標}}<div class="ipa">{{音標}}</div>{{/音標}}{{tts en_US:單字}}';
+    const backTemplate = '{{FrontSide}}<hr><div class="sec">【中文】</div><div class="meaning">{{中文意思}}</div><div class="sec">【例句】</div><div class="example">{{例句}}</div><div class="translation">{{例句翻譯}}</div>{{#助記}}<div class="mnemonic">【助記】 {{助記}}</div>{{/助記}}{{tts en_US:例句}}';
+
+    if (list.includes(name)) {
+      // 補加助記欄位（冪等）
+      const fields = await anki('modelFieldNames', { modelName: name });
+      if (!fields.includes('助記')) {
+        await anki('modelFieldAdd', { modelName: name, fieldName: '助記', index: fields.length });
+      }
+      // 先補欄位，再更新模板（ANKI 驗證模板時欄位必須已存在）
+      if (!fields.includes('音標')) {
+        await anki('modelFieldAdd', { modelName: name, fieldName: '音標', index: 1 });
+      }
+      await anki('updateModelTemplates', {
+        model: { name, templates: { '正面→背面': { Front: frontTemplate, Back: backTemplate } } }
+      });
+      await anki('updateModelStyling', { model: { name, css } });
+      return name;
+    }
+
+    await anki('createModel', {
+      modelName: name,
+      inOrderFields: ['單字', '音標', '中文意思', '例句', '例句翻譯', '助記'],
+      css,
+      cardTemplates: [{
+        Name: '正面→背面',
+        Front: frontTemplate,
+        Back: backTemplate
+      }]
+    });
+    return name;
+  }
+
+  // ─── Groq API ───
+  async function callGemini(word) {
+    const key = document.getElementById('geminiKey').value.trim();
+    if (!key) throw new Error('請先在設定中填入 Groq API Key');
+
+    const lang = document.getElementById('targetLang').value;
+
+    const prompt = `你是語言學習助手。為以下${lang}單字生成 ANKI 生字卡。
+
+單字：${word}
+
+以繁體中文回答。只回傳 JSON，不要任何額外說明或 markdown：
+{"word":"單字原形","ipa":"KK 音標（台灣教科書格式，例：/əˋkaʊnt/）","chinese_meaning":"詞性縮寫. 中文意思（例：V. 開創、先驅 / N. 先驅者 / adj. 短暫的）","example_sentence":"一個自然的${lang}例句","example_translation":"例句的繁體中文翻譯","mnemonic":"若該單字有有意義的字根／字首／字尾可拆解助記，簡短說明（例：re-建=重建）；若無語源對應，回傳空字串"}`;
+
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${key}`
+      },
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile',
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.2,
+        max_tokens: 300
+      })
+    });
+
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}));
+      throw new Error(e.error?.message || `API 錯誤 ${res.status}`);
+    }
+
+    const data = await res.json();
+    const raw = data.choices?.[0]?.message?.content || '';
+    const clean = raw.replace(/^```(?:json)?\s*|\s*```$/g, '').trim();
+    return JSON.parse(clean);
+  }
+
+  // ─── 主流程 ───
+  async function generate() {
+    const word = document.getElementById('wordInput').value.trim();
+    if (!word) return;
+
+    const btn = document.getElementById('genBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span>生成中…';
+    hideAlert();
+
+    try {
+      const card = await callGemini(word);
+      document.getElementById('fWord').value        = card.word || word;
+      document.getElementById('fIpa').value         = card.ipa || '';
+      document.getElementById('fMeaning').value     = card.chinese_meaning || '';
+      document.getElementById('fExample').value     = card.example_sentence || '';
+      document.getElementById('fTranslation').value = card.example_translation || '';
+      document.getElementById('fMnemonic').value = card.mnemonic || '';
+      document.getElementById('mnemonicGroup').style.display = 'block';
+      document.getElementById('previewPanel').classList.remove('hidden');
+    } catch (e) {
+      showAlert('err', '生成失敗：' + e.message);
+      document.getElementById('previewPanel').classList.remove('hidden');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '生成卡片';
+    }
+  }
+
+  const TTS_LANG = { '英文': 'en', '日文': 'ja', '西班牙文': 'es', '韓文': 'ko', '法文': 'fr' };
+
+  function ttsUrl(word) {
+    const tl = TTS_LANG[document.getElementById('targetLang').value] || 'en';
+    return `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(word)}&tl=${tl}&client=tw-ob`;
+  }
+
+  function previewPronunciation() {
+    const word = document.getElementById('fWord').value.trim();
+    if (!word) return;
+    const btn = document.getElementById('speakBtn');
+    btn.classList.add('playing');
+    const utter = new SpeechSynthesisUtterance(word);
+    const tl = TTS_LANG[document.getElementById('targetLang').value] || 'en';
+    utter.lang = tl === 'en' ? 'en-US' : tl === 'ja' ? 'ja-JP' : tl === 'ko' ? 'ko-KR' : tl === 'fr' ? 'fr-FR' : 'es-ES';
+    utter.onend = () => btn.classList.remove('playing');
+    speechSynthesis.cancel();
+    speechSynthesis.speak(utter);
+  }
+
+  async function addToAnki() {
+    const word        = document.getElementById('fWord').value.trim();
+    const meaning     = document.getElementById('fMeaning').value.trim();
+    const example     = document.getElementById('fExample').value.trim();
+    const translation = document.getElementById('fTranslation').value.trim();
+    const deck        = document.getElementById('deckName').value.trim() || 'English Vocabulary';
+
+    if (!word) return;
+    const btn = document.getElementById('addBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span>推送中…';
+
+    try {
+      const model = await ensureModel();
+      await anki('createDeck', { deck });
+
+      const mnemonic = document.getElementById('fMnemonic').value.trim();
+      await anki('addNote', {
+        note: {
+          deckName: deck,
+          modelName: model,
+          fields: { '單字': word, '音標': document.getElementById('fIpa').value.trim(), '中文意思': meaning, '例句': example, '例句翻譯': translation, '助記': mnemonic },
+          options: { allowDuplicate: false }
+        }
+      });
+
+      showAlert('ok', `✓ 已加入「${deck}」`);
+      saveHistory({ word, meaning });
+      setTimeout(() => {
+        document.getElementById('wordInput').value = '';
+        document.getElementById('wordInput').focus();
+        hideAlert();
+      }, 1800);
+    } catch (e) {
+      if (e.message.includes('duplicate')) {
+        showAlert('warn', `「${word}」已在牌組中，自動跳過`);
+        setTimeout(() => {
+          document.getElementById('wordInput').value = '';
+          document.getElementById('wordInput').focus();
+          hideAlert();
+        }, 2000);
+      } else if (e.message.includes('fetch') || e.message.includes('Failed')) {
+        showAlert('err', 'ANKI 未連線。請確認 ANKI 已開啟且 AnkiConnect 已安裝（設定裡可測試連線）');
+      } else {
+        showAlert('err', '加入失敗：' + e.message);
+      }
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '✚ 加入 ANKI';
+    }
+  }
+
+  function addToAnkiMobile() {
+    const word        = document.getElementById('fWord').value.trim();
+    const ipa         = document.getElementById('fIpa').value.trim();
+    const meaning     = document.getElementById('fMeaning').value.trim();
+    const example     = document.getElementById('fExample').value.trim();
+    const translation = document.getElementById('fTranslation').value.trim();
+    const mnemonic    = document.getElementById('fMnemonic').value.trim();
+    const deck        = document.getElementById('deckName').value.trim() || 'English Vocabulary';
+    if (!word) return;
+
+    // 使用桌機同步過來的「ANKI單字卡」樣板（含 TTS）
+    // anki:// 需用 %20 編碼空格，不能用 URLSearchParams（會把空格變成 +）
+    const qs = [
+      `type=${encodeURIComponent('ANKI單字卡')}`,
+      `deck=${encodeURIComponent(deck)}`,
+      `fld單字=${encodeURIComponent(word)}`,
+      `fld音標=${encodeURIComponent(ipa)}`,
+      `fld中文意思=${encodeURIComponent(meaning)}`,
+      `fld例句=${encodeURIComponent(example)}`,
+      `fld例句翻譯=${encodeURIComponent(translation)}`,
+      `fld助記=${encodeURIComponent(mnemonic)}`
+    ].join('&');
+    window.location.href = `anki://x-callback-url/addnote?${qs}`;
+  }
+
+  function copyTsv() {
+    const tsv = [
+      document.getElementById('fWord').value,
+      document.getElementById('fMeaning').value,
+      document.getElementById('fExample').value,
+      document.getElementById('fTranslation').value
+    ].join('\t');
+    navigator.clipboard.writeText(tsv)
+      .then(() => showAlert('ok', '已複製！到 ANKI「檔案→匯入」貼上即可'));
+  }
+
+  // ─── 歷史 ───
+  let history = JSON.parse(localStorage.getItem('vh') || '[]');
+
+  function saveHistory(item) {
+    history.unshift(item);
+    if (history.length > 12) history.length = 12;
+    localStorage.setItem('vh', JSON.stringify(history));
+    renderHistory();
+  }
+
+  function renderHistory() {
+    if (!history.length) return;
+    document.getElementById('historyPanel').classList.remove('hidden');
+    document.getElementById('historyList').innerHTML = history.map(h =>
+      `<div class="history-item"><span class="hi-word">${h.word}</span><span class="hi-meaning">${h.meaning}</span></div>`
+    ).join('');
+  }
+
+  // ─── Alert ───
+  function showAlert(type, msg) {
+    const el = document.getElementById('alert');
+    el.className = `alert ${type} show`;
+    el.textContent = msg;
+  }
+  function hideAlert() {
+    document.getElementById('alert').className = 'alert';
+  }
+
+  function copyAnkiConfig() {
+    const text = document.getElementById('ankiConfigPre').textContent;
+    navigator.clipboard.writeText(text).then(() => {
+      const btn = document.getElementById('copyConfigBtn');
+      btn.textContent = '已複製 ✓';
+      setTimeout(() => btn.textContent = '複製', 1800);
+    });
+  }
+
+  // ─── Init ───
+  loadSettings();
+  renderHistory();
+  checkAnki();
+</script>
+</body>
+</html>
